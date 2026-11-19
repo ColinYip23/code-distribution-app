@@ -1,0 +1,15 @@
+export const currencies = ['MYR', 'USD', 'SGD', 'EUR', 'GBP', 'AUD', 'HKD'] as const;
+export type Currency = typeof currencies[number];
+export type Business = { id: string; name: string; legal_name: string; address: string; tin: string; registration_number: string; email: string; phone: string; payment_instructions: string; currency: Currency };
+export type Product = { id: string; sku: string; name: string; description: string; provider: string; default_price: number; low_stock_threshold: number; active: boolean; created_at: string };
+export type Client = { id: string; name: string; legal_name: string; contact_person: string; email: string; phone: string; address: string; country: string; tin: string; registration_number: string; tax_identifier: string; currency: Currency; payment_terms: number; notes: string; archived: boolean; created_at: string };
+export type Stock = { product_id: string; sku: string; name: string; active: boolean; default_price: number; low_stock_threshold: number; available: number; allocated: number; void: number; expired: number };
+export type Batch = { id: string; product_id: string; supplier: string; reference: string; inserted: number; skipped: number; created_at: string };
+export type Order = { id: string; order_no: number; client_id: string; client_snapshot:Client|null; status: 'draft' | 'allocated' | 'sent' | 'cancelled'; currency: Currency; notes: string; allocated_at: string | null; created_at: string };
+export type OrderItem = { id: string; order_id: string; product_id: string; description: string; quantity: number; unit_price: number; position: number };
+export type Invoice = { id: string; client_id: string; number: string | null; currency: Currency; status: 'draft' | 'issued' | 'void'; issued_at:string|null; issue_date: string; due_date: string; billing_name: string; billing_address: string; billing_tin: string; notes: string; adjustment: number; subtotal: number; discount: number; tax: number; total: number; mismatch: boolean; created_at: string };
+export type InvoiceItem = { id: string; invoice_id: string; product_id: string | null; description: string; quantity: number; unit_price: number; discount: number; tax_rate: number; position: number };
+export type Payment = { id: string; invoice_id: string; amount: number; paid_on: string; reference: string; reversed_at: string | null };
+export type Template = { id: string; name: string; verified: boolean; storage_path: string; mapping: unknown; created_at: string };
+export type Workspace = { configured: boolean; business: Business | null; userEmail: string; role: 'owner' | 'staff'; products: Product[]; clients: Client[]; stock: Stock[]; batches: Batch[]; orders: Order[]; orderItems: OrderItem[]; invoices: Invoice[]; invoiceItems: InvoiceItem[]; invoiceOrders: { invoice_id: string; order_id: string; active: boolean }[]; payments: Payment[]; templates: Template[]; invoiceRevisions?:{id:string;invoice_id:string;snapshot:{business:Business;client:Client}}[] };
+export type ActionResult = { ok: boolean; message: string; id?: string; data?: Record<string, unknown> };
