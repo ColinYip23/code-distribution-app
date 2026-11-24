@@ -12,3 +12,17 @@
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 .action-fields{border:0;padding:0;margin:0;min-width:0}.table-pagination{display:flex;align-items:center;justify-content:flex-end;gap:9px;padding:13px 20px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}.table-pagination>span{margin-right:auto}
 .sidebar{overflow-y:auto}
+
+/* Dark appearance */
+html[data-theme="dark"]{color-scheme:dark;--ink:#e4eee8;--muted:#a1b0a7;--line:#35483e;--background:#101b17;--green:#35745d;--green-dark:#244d3d;--lime:#d5eb91}
+html[data-theme="dark"] .sidebar,html[data-theme="dark"] .topbar,html[data-theme="dark"] .panel,html[data-theme="dark"] .stat-card,html[data-theme="dark"] .modal,html[data-theme="dark"] .modal-head,html[data-theme="dark"] .login-card,html[data-theme="dark"] .getting-started{background:#1b2b23;color:var(--ink);border-color:var(--line)}
+html[data-theme="dark"] .login-page{background:radial-gradient(ellipse at top,#263c2d,transparent 60%),#101b17}
+html[data-theme="dark"] :is(input,select,textarea){background:#14221b;color:#e4eee8;border-color:#43594c}
+html[data-theme="dark"] :is(.workspace-card,.sidebar-tip,.search-box,.invoice-edit-line,.linked-orders,.code-preview,.panel-note,.total-bar,.setup-banner,.quiet-empty){background:#23372a;color:#cfddcf;border-color:#3b5041}
+html[data-theme="dark"] :is(.button.secondary,.compact-select){background:#293d30;color:#e0eadf;border-color:#4a6051}
+html[data-theme="dark"] :is(.nav-link,.breadcrumb,.breadcrumb strong,.top-link,.field label,.detail-list strong,.total-bar strong,td,th){color:#c7d7c9}
+html[data-theme="dark"] .nav-link.active,html[data-theme="dark"] .nav-link:hover,html[data-theme="dark"] .icon-button:hover{background:#304b37;color:#e6f2d7}
+html[data-theme="dark"] :is(.avatar,.product-icon,.review-icon){background:#344b39;color:#d0e6c2}
+html[data-theme="dark"] :is(.tabs button.selected,.text-button,.text-link,.setup-banner strong){color:#b9df9c}
+html[data-theme="dark"] :is(.notice,.badge){filter:brightness(.85)}
+.login-theme{float:right}

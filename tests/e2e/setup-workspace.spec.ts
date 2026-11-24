@@ -1,5 +1,17 @@
 import { expect, test } from '@playwright/test';
 
+test('defaults to dark mode and remembers the selected theme', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.getByRole('button', { name: 'Switch to light mode' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.getByRole('button', { name: 'Switch to dark mode' }).click();
+  await page.goto('/login');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+});
+
 test('logout accepts a same-origin form and preserves the browser hostname', async ({ page }) => {
   await page.goto('/login');
   const logoutResponse = page.waitForResponse(response => response.url().endsWith('/auth/logout'));
