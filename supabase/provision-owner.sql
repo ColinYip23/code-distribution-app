@@ -2,8 +2,8 @@
 -- Create/invite the Auth account first; this script does not set or store passwords.
 do $$
 declare
- owner_email text := 'CHANGE-ME@example.com';
- business_name text := 'Your business';
+ owner_email text := 'yipcolin23@gmail.com';
+ business_name text := 'CME';
  owner_user uuid;
  new_business uuid;
 begin
