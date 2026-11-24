@@ -1,5 +1,20 @@
 import { expect, test } from '@playwright/test';
 
+test('logout accepts a same-origin form and preserves the browser hostname', async ({ page }) => {
+  await page.goto('/login');
+  const logoutResponse = page.waitForResponse(response => response.url().endsWith('/auth/logout'));
+  await page.evaluate(() => {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/auth/logout';
+    document.body.appendChild(form);
+    form.submit();
+  });
+  expect((await logoutResponse).status()).toBe(303);
+  await expect(page).toHaveURL('http://127.0.0.1:3100/login');
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+});
+
 test('pop-ups stay centered on desktop and mobile', async ({ page }) => {
   for (const viewport of [{width:1280,height:900},{width:390,height:844}]) {
     await page.setViewportSize(viewport);
