@@ -2,7 +2,8 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { requireMember } from '@/lib/auth/require-member';
-import { previewCodes, parseCsv } from './inventory/import';
+import { previewCodes, parseCodeCsv, type ImportEntry } from './inventory/import';
+import { localToday } from '@/lib/format';
 import { readCodeWorkbook } from './inventory/workbook';
 import { templateMappingSchema } from './invoices/render';
 import { calculateInvoice } from './invoices/calculate';
@@ -18,7 +19,7 @@ const schemas = {
   save_client: z.object({ id: optionalId, name: z.string().trim().min(1).max(150), legal_name: text, contact_person: text, email: z.union([z.email(), z.literal('')]), phone: text, address: text, country: text, tin: text, registration_number: text, tax_identifier: text, currency: z.enum(currencies), payment_terms: z.coerce.number().int().min(0).max(365), notes: text, archived: z.boolean() }),
   save_business: z.object({ name: z.string().trim().min(1).max(150), legal_name: text, address: text, tin: text, registration_number: text, email: z.union([z.email(), z.literal('')]), phone: text, payment_instructions: text, currency: z.enum(currencies) }),
   save_order: z.object({ id: optionalId, client_id: id, currency: z.enum(currencies), notes: text, lines: z.array(line).min(1).max(100) }),
-  save_invoice: z.object({ id: optionalId, client_id: id, currency: z.enum(currencies), number: z.string().max(100), issue_date: z.iso.date(), due_date: z.iso.date(), billing_name: text, billing_address: text, billing_tin: text, notes: text, adjustment: z.string().regex(/^-?\d{1,12}(\.\d{1,2})?$/), order_ids: z.array(id).max(100), lines: z.array(z.object({ product_id: z.union([id, z.literal('')]).optional(), description: z.string().min(1).max(500), quantity: z.coerce.number().int().min(1).max(5000), unit_price: money, discount: money, tax_rate: z.string().regex(/^\d{1,3}(\.\d{1,4})?$/) })).min(1).max(100) }),
+  save_invoice: z.object({ id: optionalId, client_id: id, currency: z.enum(currencies), number: z.string().max(100), order_reference:z.string().max(200).default(''), issue_date: z.iso.date(), due_date: z.iso.date(), billing_name: text, billing_address: text, billing_tin: text, notes: text, adjustment: z.string().regex(/^-?\d{1,12}(\.\d{1,2})?$/), order_ids: z.array(id).max(100), lines: z.array(z.object({ product_id: z.union([id, z.literal('')]).optional(), description: z.string().min(1).max(500), quantity: z.coerce.number().int().min(1).max(5000), unit_price: money, discount: money, tax_rate: z.string().regex(/^\d{1,3}(\.\d{1,4})?$/) })).min(1).max(100) }),
   issue_invoice: z.object({ id, request_key: id, mismatch_reason: text }),
   transition_order: z.object({ id, status: z.enum(['sent', 'cancelled']), reason: text }),
   void_invoice: z.object({ id, reason: z.string().min(3).max(1000) }),
@@ -40,13 +41,15 @@ function failure(error: unknown): ActionResult {
   const message = error instanceof Error ? error.message : '';
   if (message === 'SETUP_REQUIRED') return { ok: false, message: 'Connect Supabase to save changes. See Settings for setup instructions.' };
   if (message === 'UNAUTHENTICATED' || message === 'FORBIDDEN') return { ok: false, message: 'Your session does not have access. Sign in with an authorized account.' };
+  if(message==='DATABASE_UPDATE_REQUIRED')return{ok:false,message:'Apply the 24 November CME file-support migration in Supabase before importing supplier files with expiry dates or saving an order reference.'};
   // Never return database details (which can contain raw codes) to the browser or logs.
-  const safe = ['INSUFFICIENT_STOCK', 'INVALID_STATE', 'MISMATCH', 'TEMPLATE_REQUIRED','TEMPLATE_CAPACITY', 'VALIDATION_ERROR'];
+  const safe = ['INSUFFICIENT_STOCK', 'INVALID_STATE', 'MISMATCH', 'TEMPLATE_REQUIRED','TEMPLATE_CAPACITY','TEMPLATE_CURRENCY', 'VALIDATION_ERROR'];
   const marker = safe.find(value => message.startsWith(value));
   if (marker === 'INSUFFICIENT_STOCK') return { ok: false, message: 'There is not enough eligible stock for this order. No codes were allocated.' };
   if (marker === 'MISMATCH') return { ok: false, message: 'Explain the difference between this invoice and its linked orders before issuing.' };
   if (marker === 'TEMPLATE_REQUIRED') return { ok: false, message: 'Upload and verify an invoice template before issuing.' };
   if(marker==='TEMPLATE_CAPACITY')return{ok:false,message:'This invoice has more lines than your verified template supports. Edit the draft or configure a larger template.'};
+  if(marker==='TEMPLATE_CURRENCY')return{ok:false,message:'This invoice currency does not match the selected template. The VSAT CME template is labelled RM and requires MYR.'};
   if (marker) return { ok: false, message: marker === 'INVALID_STATE' ? 'This action is unavailable for the current record state. Refresh and check linked invoices or payments.' : 'Check the supplied values, dates, and outstanding balance.' };
   if (message === 'DUPLICATE') return { ok: false, message: 'That number, SKU, request, or order link is already in use.' };
   return { ok: false, message: 'The operation could not be completed. Refresh and try again; previously saved allocations are preserved.' };
@@ -70,9 +73,11 @@ export async function performAction(form: FormData): Promise<ActionResult> {
       const schema = schemas[action as keyof typeof schemas];
       if (!schema) throw new Error('VALIDATION_ERROR');
       const parsed = schema.parse(input);
+      if(action==='issue_invoice'){const capability=await supabase.rpc('import_capabilities',{p_input:{}});if(capability.error||!capability.data?.template_currency_guard)throw new Error('DATABASE_UPDATE_REQUIRED');}
       if (action === 'save_invoice') {
         const invoice = schemas.save_invoice.parse(input);
         calculateInvoice(invoice.lines.map(row => ({ description: row.description, quantity: row.quantity, unitPrice: row.unit_price, discount: row.discount, taxRate: row.tax_rate })), invoice.adjustment);
+        if(invoice.order_reference){const capability=await supabase.rpc('import_capabilities',{p_input:{}});if(capability.error||capability.data?.source_metadata_version!==2)throw new Error('DATABASE_UPDATE_REQUIRED');}
       }
       const result = await supabase.rpc(action, { p_input: parsed });
       if (result.error) throw new Error(result.error.code === '23505' ? 'DUPLICATE' : result.error.message);
@@ -86,10 +91,12 @@ export async function performAction(form: FormData): Promise<ActionResult> {
 export async function previewImport(form: FormData): Promise<ActionResult> {
   try {
     const { supabase } = await requireMember();
-    const file = form.get('file'), pasted = String(form.get('pasted') ?? ''); let codes: string[]; let errors: { row: number; reason: string }[] = [];
+    const metadata=importMetadata.parse(Object.fromEntries(['product_id','supplier','reference','notes','expires_on','unit_cost'].map(key=>[key,String(form.get(key)??'')])));
+    const productResult=await supabase.from('products').select('name').eq('id',metadata.product_id).eq('active',true).single();if(productResult.error||!productResult.data)throw new Error('VALIDATION_ERROR');
+    const file = form.get('file'), pasted = String(form.get('pasted') ?? ''); let codes: string[]; let errors: { row: number; reason: string }[] = []; let entries:ImportEntry[]=[];
     if (file instanceof File && file.size) {
       if (file.size > 4 * 1024 * 1024) return { ok: false, message: 'Upload a file smaller than 4 MB.' };
-      if (file.name.toLowerCase().endsWith('.csv')) codes = parseCsv(await file.text(), String(form.get('column') ?? 'code'));
+      if (file.name.toLowerCase().endsWith('.csv')) {const result=parseCodeCsv(await file.text(),String(form.get('column')??'Auto'),productResult.data.name);entries=result.entries;errors=result.errors;codes=entries.map(entry=>entry.code);}
       else if (file.name.toLowerCase().endsWith('.xlsx')) { const result = await readCodeWorkbook(new Uint8Array(await file.arrayBuffer()), Number(form.get('xlsx_column') ?? 1)); codes = result.codes; errors = result.errors; }
       else return { ok: false, message: 'Choose a CSV or XLSX file.' };
     } else codes = pasted.split(/\r?\n/);
@@ -98,11 +105,15 @@ export async function previewImport(form: FormData): Promise<ActionResult> {
     if (check.error) throw new Error(check.error.message);
     const existing = check.data.existing as string[];
     const final = previewCodes(codes, existing);
-    const metadata=importMetadata.parse(Object.fromEntries(['product_id','supplier','reference','notes','expires_on','unit_cost'].map(key=>[key,String(form.get(key)??'')])));
-    let previewId='';if(final.accepted.length){const stored=await supabase.rpc('create_import_preview',{p_input:{...metadata,codes:final.accepted}});if(stored.error)throw new Error(stored.error.message);previewId=stored.data.preview_id;}
-    return { ok: true, message: `${final.accepted.length} codes ready to import.`, data: {preview_id:previewId,metadata, accepted: final.accepted, rejected: [...final.rejected, ...errors] } };
+    const sourceByCode=new Map<string,ImportEntry>();for(const entry of entries)if(!sourceByCode.has(entry.code))sourceByCode.set(entry.code,entry);
+    const acceptedEntries=final.accepted.map(code=>sourceByCode.get(code)??{code,expires_on:null,source:{}});
+    if(acceptedEntries.some(entry=>entry.expires_on||Object.keys(entry.source).length)){const capability=await supabase.rpc('import_capabilities',{p_input:{}});if(capability.error||capability.data?.source_metadata_version!==2)throw new Error('DATABASE_UPDATE_REQUIRED');}
+    let previewId='';if(final.accepted.length){const stored=await supabase.rpc('create_import_preview',{p_input:{...metadata,codes:final.accepted,entries:acceptedEntries}});if(stored.error)throw new Error(stored.error.message);previewId=stored.data.preview_id;}
+    const expiryDates=acceptedEntries.map(entry=>entry.expires_on||metadata.expires_on).filter(Boolean).sort();
+    const expiredCount=expiryDates.filter(date=>date<localToday()).length;
+    return { ok: true, message: `${final.accepted.length} codes ready to import.`, data: {preview_id:previewId,metadata, accepted: final.accepted, rejected: [...final.rejected, ...errors],expiredCount,sourceExpiry:expiryDates.length?{first:expiryDates[0],last:expiryDates.at(-1)}:null,validities:[...new Set(acceptedEntries.map(entry=>entry.source.validity).filter(Boolean))]} };
   } catch (error) {
-    if (error instanceof Error && /column|CSV|rows|codes at once|worksheets|Workbook/.test(error.message)) return { ok: false, message: error.message };
+    if (error instanceof Error && /column|CSV|rows|codes at once|worksheets|Workbook|GB codes/.test(error.message)) return { ok: false, message: error.message };
     return failure(error);
   }
 }

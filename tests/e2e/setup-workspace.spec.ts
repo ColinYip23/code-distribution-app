@@ -1,5 +1,23 @@
 import { expect, test } from '@playwright/test';
 
+test('pop-ups stay centered on desktop and mobile', async ({ page }) => {
+  for (const viewport of [{width:1280,height:900},{width:390,height:844}]) {
+    await page.setViewportSize(viewport);
+    for (const route of ['/clients','/invoices?new=1']) {
+      await page.goto(route);
+      if (route === '/clients') await page.getByRole('button',{name:'Add client',exact:true}).first().click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      const bounds = await dialog.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(Math.abs(bounds!.x + bounds!.width / 2 - viewport.width / 2)).toBeLessThanOrEqual(2);
+      expect(Math.abs(bounds!.y + bounds!.height / 2 - viewport.height / 2)).toBeLessThanOrEqual(2);
+      expect(bounds!.y).toBeGreaterThanOrEqual(0);
+      expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height);
+    }
+  }
+});
+
 test('unconfigured workspace is honest and every main screen renders', async ({ page }) => {
   const errors: string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto('/');
@@ -20,11 +38,16 @@ test('client editor preserves text identifiers and blocks saving without setup',
   await expect(page.getByRole('button',{name:'Save changes',exact:true})).toBeDisabled();
   await page.getByRole('button',{name:'Close dialog'}).click();await expect(page.getByRole('dialog')).not.toBeVisible();
 });
-test('import opens from the overview and supports file mode',async({page})=>{
+test('import defaults to spreadsheet upload and supports switching to pasted codes',async({page})=>{
   await page.goto('/');await page.getByRole('link',{name:'Import codes',exact:true}).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.getByRole('button',{name:'Preview import'})).toBeDisabled();
-  await page.getByRole('button',{name:'Upload spreadsheet'}).click();await expect(page.getByLabel('CSV or Excel file')).toBeVisible();
+  await expect(page.getByLabel('CSV or Excel file')).toBeVisible();
+  await expect(page.getByRole('button',{name:'Upload spreadsheet'})).toHaveClass('selected');
+  await page.getByRole('button',{name:'Paste codes',exact:true}).click();
+  await expect(page.getByLabel('Purchased codes')).toBeVisible();
+  await page.getByRole('button',{name:'Upload spreadsheet'}).click();
+  await expect(page.getByLabel('CSV or Excel file')).toBeVisible();
 });
 test('invoice draft creation does not require a template to open',async({page})=>{
   await page.goto('/invoices?new=1');await expect(page.getByRole('dialog')).toBeVisible();

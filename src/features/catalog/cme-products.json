@@ -1,0 +1,7 @@
+[
+  {"sku":"CME-ONSHORE-3GB","name":"Onshore 3GB","provider":"CME","description":"Onshore 3GB data PACs","default_price":0,"low_stock_threshold":10,"active":true},
+  {"sku":"CME-ONSHORE-20GB","name":"Onshore 20GB","provider":"CME","description":"Onshore 20GB data PACs","default_price":0,"low_stock_threshold":10,"active":true},
+  {"sku":"CME-OFFSHORE-5GB","name":"Offshore 5GB","provider":"CME","description":"Offshore 5GB data PACs","default_price":0,"low_stock_threshold":10,"active":true},
+  {"sku":"CME-OFFSHORE-10GB","name":"Offshore 10GB","provider":"CME","description":"Offshore 10GB data PACs","default_price":0,"low_stock_threshold":10,"active":true},
+  {"sku":"CME-OFFSHORE-20GB","name":"Offshore 20GB","provider":"CME","description":"Offshore 20GB data PACs","default_price":0,"low_stock_threshold":10,"active":true}
+]

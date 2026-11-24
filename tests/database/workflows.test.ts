@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, afterEach, afterAll, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const owner = '10000000-0000-4000-8000-000000000001';
 const outsider = '10000000-0000-4000-8000-000000000002';
@@ -34,7 +34,7 @@ beforeAll(async () => {
     alter table storage.objects enable row level security;
     grant usage on schema public,auth,storage to authenticated,anon; grant execute on function auth.uid() to authenticated,anon;
     insert into auth.users values ('${owner}'),('${outsider}');`);
-  await db.exec(readFileSync('supabase/migrations/202611190001_workspace.sql', 'utf8'));
+  for(const migration of readdirSync('supabase/migrations').filter(name=>name.endsWith('.sql')).sort())await db.exec(readFileSync(`supabase/migrations/${migration}`,'utf8'));
   await db.exec(`insert into public.businesses(id,name) values ('${business}','Test business');
     insert into public.business_members(business_id,user_id,role) values ('${business}','${owner}','owner');`);
 });
@@ -47,6 +47,33 @@ afterEach(async () => { await db.exec('rollback'); });
 afterAll(async () => { await db?.close(); });
 
 describe('database workflows', () => {
+  it('uses the business calendar for code expiry regardless of the database session timezone',async()=>{
+    const p=await rpc('save_product',{sku:'TZ',name:'Timezone code'});
+    const dates=(await db.query<{today:string;yesterday:string}>("select ((now() at time zone 'Asia/Kuala_Lumpur')::date)::text as today, ((now() at time zone 'Asia/Kuala_Lumpur')::date-1)::text as yesterday")).rows[0];
+    await rpc('import_codes',{product_id:p.id,request_key:crypto.randomUUID(),codes:['EXPIRES-TODAY'],expires_on:dates.today});
+    await rpc('import_codes',{product_id:p.id,request_key:crypto.randomUUID(),codes:['EXPIRED-YESTERDAY'],expires_on:dates.yesterday});
+    for(const zone of ['Etc/GMT+12','Etc/GMT-14']){await db.query("select set_config('TimeZone',$1,true)",[zone]);expect((await db.query<{available:number}>('select available from public.stock_summary where product_id=$1',[p.id])).rows[0].available).toBe(1);}
+  });
+  it('rejects issuing a USD invoice under a fixed MYR template while keeping the draft editable',async()=>{
+    const{client}=await setupStock();const template=await rpc('save_template',{name:'RM template',storage_path:`${business}/templates/rm.xlsx`,mapping:{maxItems:9,currency:'MYR'}});await rpc('verify_template',{id:template.id});
+    const invoice=await rpc('save_invoice',{client_id:client.id,currency:'USD',lines:[{description:'Code',quantity:1,unit_price:'10',discount:'0',tax_rate:'0'}]});
+    await db.exec('savepoint currency');await expect(rpc('issue_invoice',{id:invoice.id,request_key:crypto.randomUUID()})).rejects.toThrow('TEMPLATE_CURRENCY');await db.exec('rollback to savepoint currency');
+    expect((await db.query<{status:string}>('select status from public.invoices where id=$1',[invoice.id])).rows[0].status).toBe('draft');
+  });
+  it('preserves source expiry and metadata through saved preview confirmation',async()=>{
+    const{p5}=await setupStock();
+    const preview=await rpc('create_import_preview',{product_id:p5.id,codes:['SUPPLIER-EXPIRED','SUPPLIER-FUTURE'],entries:[{code:'SUPPLIER-EXPIRED',expires_on:'2000-05-31',source:{validity:'14D',created_on:'1999-11-03',remark:'Sample'}},{code:'SUPPLIER-FUTURE',expires_on:'2099-01-02',source:{validity:'14D'}}]});
+    await rpc('confirm_import',{preview_id:preview.preview_id});
+    expect((await db.query<{available:number}>('select available from public.stock_summary where product_id=$1',[p5.id])).rows[0].available).toBe(101);
+    await db.exec('reset role');
+    const rows=await db.query<{expires_on:string;source_details:{validity:string}}> ("select expires_on::text,source_details from public.codes where code_value='SUPPLIER-EXPIRED'");
+    expect(rows.rows[0].expires_on).toBe('2000-05-31');expect(rows.rows[0].source_details.validity).toBe('14D');
+  });
+  it('saves a custom client order reference independently on the invoice',async()=>{
+    const{client}=await setupStock();
+    const invoice=await rpc('save_invoice',{client_id:client.id,currency:'MYR',order_reference:'CLIENT-PO-007',lines:[{description:'Code',quantity:1,unit_price:'10',discount:'0',tax_rate:'0'}]});
+    expect(invoice.order_reference).toBe('CLIENT-PO-007');
+  });
   it('imports unique stock and skips duplicates across product types and retries', async () => {
     const { p5, p20 } = await setupStock();
     const key = crypto.randomUUID();

@@ -1,0 +1,20 @@
+{
+  "worksheet": "inv",
+  "currency": "MYR",
+  "preservePackage": true,
+  "dateFormat": "d/m/yyyy",
+  "shrinkFields": ["number", "orderReference", "clientTin", "clientName"],
+  "fields": {
+    "number": "H11", "issueDate": "H12", "paymentTerms": "H13", "orderReference": "H14", "clientTin": "H15",
+    "clientName": "C8", "clientAddress": "C9", "clientEmail": "C12", "clientPhone": "C13", "clientContactPerson": "C15", "notes": "C20", "total": "H45"
+  },
+  "firstItemRow": 23,
+  "rowStep": 2,
+  "maxItems": 9,
+  "columns": {"itemNumber": 2, "description": 3, "quantity": 5, "unit": 6, "unitPrice": 7, "amount": 8},
+  "unitLabel": "Pcs",
+  "clearRanges": ["C8:D15", "H11:H15", "B22:H40", "C20:D21", "C44", "A62", "H45"],
+  "mergeRanges": ["C8:D8", "C9:D11", "C12:D12", "C13:D13", "C15:D15", "C20:D21", "C35:D35", "C37:D37", "C39:D39"],
+  "wrapFields": ["clientAddress", "notes"],
+  "fieldFormats": {"clientEmail": "E-mail: {value}", "clientPhone": "Tel: {value}", "clientContactPerson": "Attn: {value}"}
+}
