@@ -21,7 +21,7 @@ html[data-theme="dark"] :is(input,select,textarea){background:#14221b;color:#e4e
 html[data-theme="dark"] :is(.workspace-card,.sidebar-tip,.search-box,.invoice-edit-line,.linked-orders,.code-preview,.panel-note,.total-bar,.setup-banner,.quiet-empty){background:#23372a;color:#cfddcf;border-color:#3b5041}
 html[data-theme="dark"] :is(.button.secondary,.compact-select){background:#293d30;color:#e0eadf;border-color:#4a6051}
 html[data-theme="dark"] :is(.nav-link,.breadcrumb,.breadcrumb strong,.top-link,.field label,.detail-list strong,.total-bar strong,td,th){color:#c7d7c9}
-html[data-theme="dark"] .table-scroll table th{color:#111}
+html[data-theme="dark"] .table-scroll table th{color:#d0d0d0;background:#1b2b23;border-bottom:1px solid #fff}
 html[data-theme="dark"] .nav-link.active,html[data-theme="dark"] .nav-link:hover,html[data-theme="dark"] .icon-button:hover{background:#304b37;color:#e6f2d7}
 html[data-theme="dark"] :is(.avatar,.product-icon,.review-icon){background:#344b39;color:#d0e6c2}
 html[data-theme="dark"] :is(.tabs button.selected,.text-button,.text-link,.setup-banner strong){color:#b9df9c}
