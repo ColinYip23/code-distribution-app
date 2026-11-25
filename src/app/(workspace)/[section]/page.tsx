@@ -7,7 +7,9 @@ import { OrdersScreen } from '@/features/orders/screens';
 import { InvoicesScreen } from '@/features/invoices/screens';
 import { SettingsScreen } from '@/features/settings/screen';
 export default async function Section({params,searchParams}:{params:Promise<{section:string}>;searchParams:Promise<Record<string,string|undefined>>}){
- const{section}=await params;const query=await searchParams;const w=await getWorkspace();
+ const{section}=await params;const query=await searchParams;
+ if(!['products','clients','inventory','orders','invoices','settings'].includes(section)) notFound();
+ const w=await getWorkspace(section as 'products'|'clients'|'inventory'|'orders'|'invoices'|'settings');
  if(section==='products')return <ProductsScreen workspace={w}/>;
  if(section==='clients')return <ClientsScreen workspace={w}/>;
  if(section==='orders')return <OrdersScreen workspace={w} openNew={query.new==='1'}/>;

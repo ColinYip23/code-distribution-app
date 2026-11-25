@@ -27,3 +27,5 @@ html[data-theme="dark"] :is(.avatar,.product-icon,.review-icon){background:#344b
 html[data-theme="dark"] :is(.tabs button.selected,.text-button,.text-link,.setup-banner strong){color:#b9df9c}
 html[data-theme="dark"] :is(.notice,.badge){filter:brightness(.85)}
 .login-theme{float:right}
+
+.page-loading{padding:32px 0;color:var(--muted);font-size:14px}
