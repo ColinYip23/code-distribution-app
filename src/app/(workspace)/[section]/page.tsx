@@ -16,8 +16,8 @@ export default async function Section({params,searchParams}:{params:Promise<{sec
  if(section==='invoices')return <InvoicesScreen workspace={w} openNew={query.new==='1'} fromOrder={query.order}/>;
  if(section==='settings')return <SettingsScreen workspace={w}/>;
  if(section==='inventory'){
-  const offset=Math.max(0,Math.floor(Number(query.offset)||0)/100|0)*100;const productFilter=query.product??'',statusFilter=query.status??'';let rows=[];if(w.configured){const{supabase}=await requireMember();const result=await supabase.rpc('inventory_page',{p_input:{offset,product_id:productFilter,status:statusFilter}});if(result.error)throw new Error('Could not load inventory.');rows=result.data.rows;}
-  return <InventoryScreen workspace={w} openImport={query.import==='1'} inventory={rows} offset={offset} productFilter={productFilter} statusFilter={statusFilter}/>;
+  const offset=Math.max(0,Math.floor(Number(query.offset)||0)/100|0)*100;const productFilter=query.product??'',statusFilter=query.status??'';let rows=[];let allocationReady=false;if(w.configured){const{supabase}=await requireMember();const result=await supabase.rpc('inventory_page',{p_input:{offset,product_id:productFilter,status:statusFilter}});if(result.error)throw new Error('Could not load inventory.');rows=result.data.rows;allocationReady=result.data.allocation_lookup_version===1;}
+  return <InventoryScreen workspace={w} openImport={query.import==='1'} inventory={rows} allocationReady={allocationReady} offset={offset} productFilter={productFilter} statusFilter={statusFilter}/>;
  }
  notFound();
 }

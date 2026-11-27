@@ -141,3 +141,14 @@ export async function uploadTemplate(form: FormData): Promise<ActionResult> {
     revalidatePath('/', 'layout'); return { ok: true, message: 'Template version saved. Existing invoices keep their original template.' };
   } catch (error) { return failure(error); }
 }
+
+export async function lookupInventoryCode(form: FormData): Promise<ActionResult> {
+  try {
+    const code = z.string().trim().min(1).max(512).parse(form.get('code'));
+    const { supabase } = await requireMember();
+    const result = await supabase.rpc('inventory_page', { p_input: { code } });
+    if (result.error) throw new Error('LOOKUP_FAILED');
+    if (result.data?.allocation_lookup_version !== 1) return { ok: false, message: 'Apply the inventory allocation lookup database migration first.' };
+    return { ok: true, message: result.data.rows.length ? 'Code found.' : 'No matching code found.', data: { rows: result.data.rows } };
+  } catch (error) { return failure(error); }
+}

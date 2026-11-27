@@ -47,6 +47,20 @@ afterEach(async () => { await db.exec('rollback'); });
 afterAll(async () => { await db?.close(); });
 
 describe('database workflows', () => {
+  it('finds an exact inventory code and shows its allocated client and order without revealing the code', async () => {
+    const { p5, client } = await setupStock();
+    const order = await createOrder(client.id, p5.id); await allocate(order.id as string);
+    const code = ((await rpc('order_codes', {id:order.id})).codes as {code:string}[])[0].code;
+    const result = await rpc('inventory_page', {code});
+    const rows = result.rows as {masked_code:string;client_name:string;order_id:string;order_no:number;code_value?:string}[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].order_id).toBe(order.id);
+    expect(rows[0].client_name).toBe(client.name);
+    expect(rows[0].code_value).toBeUndefined();
+    expect((await rpc('inventory_page', {code:'NOT-A-CODE'})).rows).toEqual([]);
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [outsider]);
+    await expect(rpc('inventory_page', {code})).rejects.toThrow('FORBIDDEN');
+  });
   it('does not void an invoice shared with another order', async () => {
     const { p5, client } = await setupStock(); const first = await createOrder(client.id,p5.id); const second = await createOrder(client.id,p5.id); await allocate(first.id as string); await allocate(second.id as string);
     const invoice=await rpc('save_invoice',{client_id:client.id,currency:'MYR',order_ids:[first.id,second.id],lines:[{product_id:p5.id,description:'Codes',quantity:20,unit_price:'2',discount:'0',tax_rate:'0'}]});
