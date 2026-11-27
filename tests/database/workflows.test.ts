@@ -47,6 +47,33 @@ afterEach(async () => { await db.exec('rollback'); });
 afterAll(async () => { await db?.close(); });
 
 describe('database workflows', () => {
+  it('issues one increasing VSSB sequence across invoices and never reuses a void number', async () => {
+    const { client } = await setupStock();
+    const template = await rpc('save_template', { name: 'Test.xlsx', storage_path: `${business}/templates/sequence.xlsx`, mapping: { maxItems: 5 } });
+    await rpc('verify_template', { id: template.id });
+    const draft = () => rpc('save_invoice', { client_id: client.id, currency: 'MYR', lines: [{ description: 'Service', quantity: 1, unit_price: '10', discount: '0', tax_rate: '0' }] });
+    const first = await draft(); const second = await draft();
+    const issued = await rpc('issue_invoice', { id: first.id, request_key: crypto.randomUUID() });
+    expect((issued.snapshot as { number: string }).number).toBe('VSSB-04151');
+    const retry = await rpc('issue_invoice', { id: first.id, request_key: crypto.randomUUID() });
+    expect(retry.id).toBe(issued.id);
+    await rpc('void_invoice', { id: first.id, reason: 'Correction' });
+    const next = await rpc('issue_invoice', { id: second.id, request_key: crypto.randomUUID() });
+    expect((next.snapshot as { number: string }).number).toBe('VSSB-04152');
+  });
+  it('skips a previously issued VSSB number and ignores a draft custom number', async () => {
+    const { client } = await setupStock();
+    const template = await rpc('save_template', { name: 'Test.xlsx', storage_path: `${business}/templates/collision.xlsx`, mapping: { maxItems: 5 } });
+    await rpc('verify_template', { id: template.id });
+    const input = { client_id: client.id, currency: 'MYR', number: 'CUSTOM', lines: [{ description: 'Service', quantity: 1, unit_price: '10', discount: '0', tax_rate: '0' }] };
+    const old = await rpc('save_invoice', input);
+    await db.exec('reset role');
+    await db.query("update public.invoices set number='VSSB-04151', status='void', issued_at=now() where id=$1", [old.id]);
+    await db.exec('set local role authenticated');
+    const draft = await rpc('save_invoice', input);
+    const issued = await rpc('issue_invoice', { id: draft.id, request_key: crypto.randomUUID() });
+    expect((issued.snapshot as { number: string }).number).toBe('VSSB-04152');
+  });
   it('saves the invoice purpose and freezes it in the issued snapshot', async () => {
     const { client } = await setupStock();
     const template = await rpc('save_template', { name: 'Test.xlsx', storage_path: `${business}/templates/purpose.xlsx`, mapping: { maxItems: 5 } });

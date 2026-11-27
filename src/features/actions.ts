@@ -41,6 +41,7 @@ function failure(error: unknown): ActionResult {
   const message = error instanceof Error ? error.message : '';
   if (message === 'SETUP_REQUIRED') return { ok: false, message: 'Connect Supabase to save changes. See Settings for setup instructions.' };
   if (message === 'UNAUTHENTICATED' || message === 'FORBIDDEN') return { ok: false, message: 'Your session does not have access. Sign in with an authorized account.' };
+  if(message==='INVOICE_SEQUENCE_UPDATE_REQUIRED')return{ok:false,message:'Apply the VSSB invoice numbering database migration before issuing invoices.'};
   if(message==='INVOICE_PURPOSE_UPDATE_REQUIRED')return{ok:false,message:'Apply the invoice purpose database migration before saving invoices.'};
   if(message==='DATABASE_UPDATE_REQUIRED')return{ok:false,message:'Apply the 24 November CME file-support migration in Supabase before importing supplier files with expiry dates or saving an order reference.'};
   // Never return database details (which can contain raw codes) to the browser or logs.
@@ -74,7 +75,7 @@ export async function performAction(form: FormData): Promise<ActionResult> {
       const schema = schemas[action as keyof typeof schemas];
       if (!schema) throw new Error('VALIDATION_ERROR');
       const parsed = schema.parse(input);
-      if(action==='issue_invoice'){const capability=await supabase.rpc('import_capabilities',{p_input:{}});if(capability.error||!capability.data?.template_currency_guard)throw new Error('DATABASE_UPDATE_REQUIRED');}
+      if(action==='issue_invoice'){const sequence=await supabase.rpc('invoice_sequence_capabilities',{p_input:{}});if(sequence.error||!sequence.data?.vssb_sequence)throw new Error('INVOICE_SEQUENCE_UPDATE_REQUIRED');const capability=await supabase.rpc('import_capabilities',{p_input:{}});if(capability.error||!capability.data?.template_currency_guard)throw new Error('DATABASE_UPDATE_REQUIRED');}
       if (action === 'save_invoice') {
         const invoice = schemas.save_invoice.parse(input);
         const purposeColumn=await supabase.from('invoices').select('purpose_description').limit(0);if(purposeColumn.error)throw new Error('INVOICE_PURPOSE_UPDATE_REQUIRED');
