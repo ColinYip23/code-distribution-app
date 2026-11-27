@@ -24,7 +24,11 @@ export async function ensureInvoiceArtifact(member: Member, invoiceId: string) {
   const template = templateResult.data;
   const file = await supabase.storage.from('documents').download(template.storage_path);
   if (file.error) throw new Error('TEMPLATE_UNAVAILABLE');
-  const bytes = await renderInvoiceWorkbook(new Uint8Array(await file.data.arrayBuffer()), templateMappingSchema.parse(template.mapping), renderValues(revision.snapshot as RenderSnapshot));
+  const snapshot = revision.snapshot as RenderSnapshot;
+  const mapping = templateMappingSchema.parse(template.mapping);
+  // Only newly issued revisions contain this field; preserve historical workbooks.
+  if (snapshot.purpose_description !== undefined && mapping.preservePackage && mapping.worksheet === 'inv' && mapping.firstItemRow === 23 && mapping.fields.total === 'H45' && !mapping.fields.purposeDescription) mapping.fields.purposeDescription = 'C19';
+  const bytes = await renderInvoiceWorkbook(new Uint8Array(await file.data.arrayBuffer()), mapping, renderValues(snapshot));
   const path = `${businessId}/invoices/${revision.id}.xlsx`;
   const upload = await admin.storage.from('documents').upload(path, bytes, { contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', upsert: false });
   if (upload.error) {

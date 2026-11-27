@@ -47,6 +47,15 @@ afterEach(async () => { await db.exec('rollback'); });
 afterAll(async () => { await db?.close(); });
 
 describe('database workflows', () => {
+  it('saves the invoice purpose and freezes it in the issued snapshot', async () => {
+    const { client } = await setupStock();
+    const template = await rpc('save_template', { name: 'Test.xlsx', storage_path: `${business}/templates/purpose.xlsx`, mapping: { maxItems: 5 } });
+    await rpc('verify_template', { id: template.id });
+    const invoice = await rpc('save_invoice', { client_id: client.id, currency: 'MYR', purpose_description: 'Being Maintenance Services as below:', lines: [{ description: 'Repair', quantity: 1, unit_price: '10', discount: '0', tax_rate: '0' }] });
+    expect(invoice.purpose_description).toBe('Being Maintenance Services as below:');
+    const issued = await rpc('issue_invoice', { id: invoice.id, request_key: crypto.randomUUID() });
+    expect((issued.snapshot as { purpose_description: string }).purpose_description).toBe('Being Maintenance Services as below:');
+  });
   it('uses the business calendar for code expiry regardless of the database session timezone',async()=>{
     const p=await rpc('save_product',{sku:'TZ',name:'Timezone code'});
     const dates=(await db.query<{today:string;yesterday:string}>("select ((now() at time zone 'Asia/Kuala_Lumpur')::date)::text as today, ((now() at time zone 'Asia/Kuala_Lumpur')::date-1)::text as yesterday")).rows[0];

@@ -19,7 +19,7 @@ const schemas = {
   save_client: z.object({ id: optionalId, name: z.string().trim().min(1).max(150), legal_name: text, contact_person: text, email: z.union([z.email(), z.literal('')]), phone: text, address: text, country: text, tin: text, registration_number: text, tax_identifier: text, currency: z.enum(currencies), payment_terms: z.coerce.number().int().min(0).max(365), notes: text, archived: z.boolean() }),
   save_business: z.object({ name: z.string().trim().min(1).max(150), legal_name: text, address: text, tin: text, registration_number: text, email: z.union([z.email(), z.literal('')]), phone: text, payment_instructions: text, currency: z.enum(currencies) }),
   save_order: z.object({ id: optionalId, client_id: id, currency: z.enum(currencies), notes: text, lines: z.array(line).min(1).max(100) }),
-  save_invoice: z.object({ id: optionalId, client_id: id, currency: z.enum(currencies), number: z.string().max(100), order_reference:z.string().max(200).default(''), issue_date: z.iso.date(), due_date: z.iso.date(), billing_name: text, billing_address: text, billing_tin: text, notes: text, adjustment: z.string().regex(/^-?\d{1,12}(\.\d{1,2})?$/), order_ids: z.array(id).max(100), lines: z.array(z.object({ product_id: z.union([id, z.literal('')]).optional(), description: z.string().min(1).max(500), quantity: z.coerce.number().int().min(1).max(5000), unit_price: money, discount: money, tax_rate: z.string().regex(/^\d{1,3}(\.\d{1,4})?$/) })).min(1).max(100) }),
+  save_invoice: z.object({ id: optionalId, client_id: id, currency: z.enum(currencies), number: z.string().max(100), order_reference:z.string().max(200).default(''), purpose_description:z.string().max(250), issue_date: z.iso.date(), due_date: z.iso.date(), billing_name: text, billing_address: text, billing_tin: text, notes: text, adjustment: z.string().regex(/^-?\d{1,12}(\.\d{1,2})?$/), order_ids: z.array(id).max(100), lines: z.array(z.object({ product_id: z.union([id, z.literal('')]).optional(), description: z.string().min(1).max(500), quantity: z.coerce.number().int().min(1).max(5000), unit_price: money, discount: money, tax_rate: z.string().regex(/^\d{1,3}(\.\d{1,4})?$/) })).min(1).max(100) }),
   issue_invoice: z.object({ id, request_key: id, mismatch_reason: text }),
   transition_order: z.object({ id, status: z.enum(['sent', 'cancelled']), reason: text }),
   void_invoice: z.object({ id, reason: z.string().min(3).max(1000) }),
@@ -41,6 +41,7 @@ function failure(error: unknown): ActionResult {
   const message = error instanceof Error ? error.message : '';
   if (message === 'SETUP_REQUIRED') return { ok: false, message: 'Connect Supabase to save changes. See Settings for setup instructions.' };
   if (message === 'UNAUTHENTICATED' || message === 'FORBIDDEN') return { ok: false, message: 'Your session does not have access. Sign in with an authorized account.' };
+  if(message==='INVOICE_PURPOSE_UPDATE_REQUIRED')return{ok:false,message:'Apply the invoice purpose database migration before saving invoices.'};
   if(message==='DATABASE_UPDATE_REQUIRED')return{ok:false,message:'Apply the 24 November CME file-support migration in Supabase before importing supplier files with expiry dates or saving an order reference.'};
   // Never return database details (which can contain raw codes) to the browser or logs.
   const safe = ['INSUFFICIENT_STOCK', 'INVALID_STATE', 'MISMATCH', 'TEMPLATE_REQUIRED','TEMPLATE_CAPACITY','TEMPLATE_CURRENCY', 'VALIDATION_ERROR'];
@@ -76,6 +77,7 @@ export async function performAction(form: FormData): Promise<ActionResult> {
       if(action==='issue_invoice'){const capability=await supabase.rpc('import_capabilities',{p_input:{}});if(capability.error||!capability.data?.template_currency_guard)throw new Error('DATABASE_UPDATE_REQUIRED');}
       if (action === 'save_invoice') {
         const invoice = schemas.save_invoice.parse(input);
+        const purposeColumn=await supabase.from('invoices').select('purpose_description').limit(0);if(purposeColumn.error)throw new Error('INVOICE_PURPOSE_UPDATE_REQUIRED');
         calculateInvoice(invoice.lines.map(row => ({ description: row.description, quantity: row.quantity, unitPrice: row.unit_price, discount: row.discount, taxRate: row.tax_rate })), invoice.adjustment);
         if(invoice.order_reference){const capability=await supabase.rpc('import_capabilities',{p_input:{}});if(capability.error||capability.data?.source_metadata_version!==2)throw new Error('DATABASE_UPDATE_REQUIRED');}
       }

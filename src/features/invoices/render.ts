@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { InvoiceLine } from './calculate';
 import { renderPreservedPackage } from './package-renderer';
 const cell = z.string().regex(/^[A-Z]{1,3}[1-9][0-9]{0,5}$/);
-export const templateFields=['number','issueDate','dueDate','paymentTerms','orderReference','clientName','clientAddress','clientTin','clientRegistrationNumber','clientEmail','clientPhone','clientTaxIdentifier','clientCountry','clientContactPerson','businessName','businessAddress','businessTin','businessRegistrationNumber','businessEmail','businessPhone','currency','subtotal','discount','tax','adjustment','total','notes','paymentInstructions'] as const;
+export const templateFields=['purposeDescription','number','issueDate','dueDate','paymentTerms','orderReference','clientName','clientAddress','clientTin','clientRegistrationNumber','clientEmail','clientPhone','clientTaxIdentifier','clientCountry','clientContactPerson','businessName','businessAddress','businessTin','businessRegistrationNumber','businessEmail','businessPhone','currency','subtotal','discount','tax','adjustment','total','notes','paymentInstructions'] as const;
 export const templateMappingSchema = z.object({
   worksheet: z.string().min(1).max(31), fields: z.partialRecord(z.enum(templateFields), cell),
   currency:z.string().regex(/^[A-Z]{3}$/).optional(),
