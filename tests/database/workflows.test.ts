@@ -47,6 +47,38 @@ afterEach(async () => { await db.exec('rollback'); });
 afterAll(async () => { await db?.close(); });
 
 describe('database workflows', () => {
+  it('does not void an invoice shared with another order', async () => {
+    const { p5, client } = await setupStock(); const first = await createOrder(client.id,p5.id); const second = await createOrder(client.id,p5.id); await allocate(first.id as string); await allocate(second.id as string);
+    const invoice=await rpc('save_invoice',{client_id:client.id,currency:'MYR',order_ids:[first.id,second.id],lines:[{product_id:p5.id,description:'Codes',quantity:20,unit_price:'2',discount:'0',tax_rate:'0'}]});
+    await db.exec('savepoint cancel_shared'); await expect(rpc('cancel_order_and_release',{id:first.id,reason:'Cancelled',release_confirmed:true})).rejects.toThrow('SHARED_INVOICE'); await db.exec('rollback to savepoint cancel_shared');
+    expect((await db.query<{status:string}>('select status from public.invoices where id=$1',[invoice.id])).rows[0].status).toBe('draft');
+    expect((await db.query<{available:number}>('select available from public.stock_summary where product_id=$1',[p5.id])).rows[0].available).toBe(80);
+  });
+  it('blocks cancellation with payments and leaves invoice and stock unchanged', async () => {
+    const { p5, client } = await setupStock(); const order = await createOrder(client.id,p5.id); await allocate(order.id as string);
+    const template=await rpc('save_template',{name:'Test.xlsx',storage_path:`${business}/templates/payment-cancel.xlsx`,mapping:{maxItems:5}}); await rpc('verify_template',{id:template.id});
+    const invoice=await rpc('save_invoice',{client_id:client.id,currency:'MYR',order_ids:[order.id],lines:[{product_id:p5.id,description:'Codes',quantity:10,unit_price:'2',discount:'0',tax_rate:'0'}]});
+    await rpc('issue_invoice',{id:invoice.id,request_key:crypto.randomUUID()}); await rpc('record_payment',{invoice_id:invoice.id,amount:'1',request_key:crypto.randomUUID()});
+    await db.exec('savepoint cancel_paid'); await expect(rpc('cancel_order_and_release',{id:order.id,reason:'Cancelled',release_confirmed:true})).rejects.toThrow('INVOICE_HAS_PAYMENTS'); await db.exec('rollback to savepoint cancel_paid');
+    expect((await db.query<{status:string}>('select status from public.invoices where id=$1',[invoice.id])).rows[0].status).toBe('issued');
+    expect((await db.query<{available:number}>('select available from public.stock_summary where product_id=$1',[p5.id])).rows[0].available).toBe(90);
+  });
+  it('requires confirmation before releasing allocated codes', async () => {
+    const { p5, client } = await setupStock(); const order = await createOrder(client.id,p5.id); await allocate(order.id as string);
+    await db.exec('savepoint cancel_no_confirmation'); await expect(rpc('cancel_order_and_release',{id:order.id,reason:'Cancelled'})).rejects.toThrow('confirm codes'); await db.exec('rollback to savepoint cancel_no_confirmation');
+    expect((await db.query<{available:number}>('select available from public.stock_summary where product_id=$1',[p5.id])).rows[0].available).toBe(90);
+  });
+  it('cancels an invoiced order, voids its invoice and returns its codes atomically', async () => {
+    const { p5, client } = await setupStock();
+    const order = await createOrder(client.id, p5.id); await allocate(order.id as string);
+    const template = await rpc('save_template', { name:'Test.xlsx', storage_path:`${business}/templates/cancel.xlsx`, mapping:{maxItems:5} }); await rpc('verify_template',{id:template.id});
+    const invoice = await rpc('save_invoice',{client_id:client.id,currency:'MYR',order_ids:[order.id],lines:[{product_id:p5.id,description:'Codes',quantity:10,unit_price:'2',discount:'0',tax_rate:'0'}]});
+    await rpc('issue_invoice',{id:invoice.id,request_key:crypto.randomUUID()});
+    await rpc('cancel_order_and_release',{id:order.id,reason:'Customer cancelled',release_confirmed:true});
+    expect((await db.query<{status:string}>('select status from public.orders where id=$1',[order.id])).rows[0].status).toBe('cancelled');
+    expect((await db.query<{status:string}>('select status from public.invoices where id=$1',[invoice.id])).rows[0].status).toBe('void');
+    expect((await db.query<{available:number}>('select available from public.stock_summary where product_id=$1',[p5.id])).rows[0].available).toBe(100);
+  });
   it('issues one increasing VSSB sequence across invoices and never reuses a void number', async () => {
     const { client } = await setupStock();
     const template = await rpc('save_template', { name: 'Test.xlsx', storage_path: `${business}/templates/sequence.xlsx`, mapping: { maxItems: 5 } });

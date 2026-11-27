@@ -21,6 +21,7 @@ const schemas = {
   save_order: z.object({ id: optionalId, client_id: id, currency: z.enum(currencies), notes: text, lines: z.array(line).min(1).max(100) }),
   save_invoice: z.object({ id: optionalId, client_id: id, currency: z.enum(currencies), number: z.string().max(100), order_reference:z.string().max(200).default(''), purpose_description:z.string().max(250), issue_date: z.iso.date(), due_date: z.iso.date(), billing_name: text, billing_address: text, billing_tin: text, notes: text, adjustment: z.string().regex(/^-?\d{1,12}(\.\d{1,2})?$/), order_ids: z.array(id).max(100), lines: z.array(z.object({ product_id: z.union([id, z.literal('')]).optional(), description: z.string().min(1).max(500), quantity: z.coerce.number().int().min(1).max(5000), unit_price: money, discount: money, tax_rate: z.string().regex(/^\d{1,3}(\.\d{1,4})?$/) })).min(1).max(100) }),
   issue_invoice: z.object({ id, request_key: id, mismatch_reason: text }),
+  cancel_order_and_release: z.object({ id, reason: z.string().trim().min(3).max(1000), release_confirmed: z.union([z.literal('yes'),z.literal('')]).transform(v=>v==='yes') }),
   transition_order: z.object({ id, status: z.enum(['sent', 'cancelled']), reason: text }),
   void_invoice: z.object({ id, reason: z.string().min(3).max(1000) }),
   record_payment: z.object({ invoice_id: id, amount: money, paid_on: z.iso.date(), reference: text, request_key: id }),
@@ -39,6 +40,7 @@ function fields(form: FormData) {
 function failure(error: unknown): ActionResult {
   if (error instanceof z.ZodError) return { ok: false, message: error.issues[0]?.message ?? 'Check the form fields.' };
   const message = error instanceof Error ? error.message : '';
+  if (message === 'CANCELLATION_UPDATE_REQUIRED') return {ok:false,message:'Apply the order cancellation database migration before cancelling.'};
   if (message === 'SETUP_REQUIRED') return { ok: false, message: 'Connect Supabase to save changes. See Settings for setup instructions.' };
   if (message === 'UNAUTHENTICATED' || message === 'FORBIDDEN') return { ok: false, message: 'Your session does not have access. Sign in with an authorized account.' };
   if(message==='INVOICE_SEQUENCE_UPDATE_REQUIRED')return{ok:false,message:'Apply the VSSB invoice numbering database migration before issuing invoices.'};
@@ -47,6 +49,8 @@ function failure(error: unknown): ActionResult {
   // Never return database details (which can contain raw codes) to the browser or logs.
   const safe = ['INSUFFICIENT_STOCK', 'INVALID_STATE', 'MISMATCH', 'TEMPLATE_REQUIRED','TEMPLATE_CAPACITY','TEMPLATE_CURRENCY', 'VALIDATION_ERROR'];
   const marker = safe.find(value => message.startsWith(value));
+  if (message.startsWith('SHARED_INVOICE')) return {ok:false,message:'This invoice covers other orders. Resolve the shared invoice before cancelling this order.'};
+  if (message.startsWith('INVOICE_HAS_PAYMENTS')) return {ok:false,message:'The linked invoice has payments. Resolve the payments before cancelling this order.'};
   if (marker === 'INSUFFICIENT_STOCK') return { ok: false, message: 'There is not enough eligible stock for this order. No codes were allocated.' };
   if (marker === 'MISMATCH') return { ok: false, message: 'Explain the difference between this invoice and its linked orders before issuing.' };
   if (marker === 'TEMPLATE_REQUIRED') return { ok: false, message: 'Upload and verify an invoice template before issuing.' };
@@ -83,6 +87,7 @@ export async function performAction(form: FormData): Promise<ActionResult> {
         if(invoice.order_reference){const capability=await supabase.rpc('import_capabilities',{p_input:{}});if(capability.error||capability.data?.source_metadata_version!==2)throw new Error('DATABASE_UPDATE_REQUIRED');}
       }
       const result = await supabase.rpc(action, { p_input: parsed });
+      if (result.error && action === 'cancel_order_and_release' && result.error.code === 'PGRST202') throw new Error('CANCELLATION_UPDATE_REQUIRED');
       if (result.error) throw new Error(result.error.code === '23505' ? 'DUPLICATE' : result.error.message);
       data = result.data;
     }
